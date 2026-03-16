@@ -166,10 +166,16 @@ def setup_browser_menu(browser):
         lambda: ConvertNotesDialog.show_modal(browser.selectedNotes(), browser)
     )
 
+    add_example_words_action = QAction("Add kanji example words to UserData", browser)
+    add_example_words_action.triggered.connect(
+        lambda: on_add_example_words(browser.selectedNotes(), browser)
+    )
+
     browser.form.menuEdit.addSeparator()
     browser.form.menuEdit.addAction(create_cards_action)
     browser.form.menuEdit.addAction(mark_known_action)
     browser.form.menuEdit.addAction(convert_notes_action)
+    browser.form.menuEdit.addAction(add_example_words_action)
 
     browser.form.menu_Notes.insertAction(
         browser.form.actionManage_Note_Types, create_cards_action
@@ -179,6 +185,9 @@ def setup_browser_menu(browser):
     )
     browser.form.menu_Notes.insertAction(
         browser.form.actionManage_Note_Types, convert_notes_action
+    )
+    browser.form.menu_Notes.insertAction(
+        browser.form.actionManage_Note_Types, add_example_words_action
     )
     browser.form.menu_Notes.insertSeparator(browser.form.actionManage_Note_Types)
 
@@ -196,3 +205,55 @@ def add_note(col, note, deck_id):
 
 
 anki.collection.Collection.add_note = add_note
+
+
+def on_add_example_words(note_ids, browser):
+    if not note_ids:
+        return
+    
+    # Generate single timestamp for this run
+    import time
+    current_timestamp = int(time.time())
+    
+    err = "(no error)"
+    for nid in note_ids:
+        try:
+            note = browser.mw.col.getNote(nid)
+            
+            # Check if this is a Migaku Kanji note
+            if 'MigakuData' not in note:
+                continue
+                
+            # Decode the data
+            import base64
+            import json
+            
+            data_b64 = note['MigakuData']
+            data_json = base64.b64decode(data_b64).decode('utf-8')
+            data = json.loads(data_json)
+            
+            # Extract words and their frequency status
+            example_words = []
+            if 'words' in data:
+                words_list = data['words']
+                for i, (word, _, _, is_common) in enumerate(words_list):
+                    # Add <br> only if it's not the last word
+                    word_entry = word
+                    if i < len(words_list) - 1:
+                        word_entry += "<br>"
+                    example_words.append(word_entry)
+                
+            # Prepare new content with timestamp marker
+            new_content = f"<br><br>={current_timestamp}=<br>{''.join(example_words)}"
+                
+            # Append to existing UserData (using dict-style access)
+            existing_data = note['UserData'] if 'UserData' in note else ''
+            note['UserData'] = existing_data + new_content
+            note.flush()
+                
+        except Exception as e:
+            err = f"Error processing note {nid}: {str(e)}"
+            print(err)
+    
+    browser.model.reset()
+    aqt.utils.showInfo(f"Example words have been added to the selected cards. Err: {err}")

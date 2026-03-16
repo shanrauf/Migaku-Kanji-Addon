@@ -46,6 +46,23 @@ class MarkKnownDialog(QDialog):
         self.txt_box.setPlaceholderText("Enter Kanji which should be marked known")
         lyt.addWidget(self.txt_box)
 
+        self.delete_unstudied_checkbox = QCheckBox(
+            "Delete unstudied kanji cards for these characters"
+        )
+        self.delete_unstudied_checkbox.setToolTip(
+            "If checked, any kanji cards for these characters that have never been reviewed will be deleted.\n"
+            "Cards with review history are kept."
+        )
+        lyt.addWidget(self.delete_unstudied_checkbox)
+
+        scope_lbl = QLabel(
+            "Scope: The selected learning type above (Recognition/Production) controls what will happen.\n"
+            "Only that learning type will be marked as known, and if the checkbox is enabled, only that learning type's unstudied cards will be deleted.\n"
+            "Other learning types are left unchanged."
+        )
+        scope_lbl.setWordWrap(True)
+        lyt.addWidget(scope_lbl)
+
         hlyt = QHBoxLayout()
         lyt.addLayout(hlyt)
 
@@ -111,7 +128,11 @@ class MarkKnownDialog(QDialog):
 
     def mark_known(self):
         card_type = self.ct_selector.current_card_type
-        characters = text_parser.filter_cjk(self.txt_box.toPlainText())
+        characters = list(text_parser.filter_cjk(self.txt_box.toPlainText()))
+        if self.delete_unstudied_checkbox.isChecked() and card_type is not None:
+            aqt.mw.migaku_kanji_db.delete_unstudied_cards_for_characters(
+                card_type, characters
+            )
         aqt.mw.migaku_kanji_db.mass_set_characters_known(card_type, characters)
         self.accept()
 

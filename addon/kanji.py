@@ -561,10 +561,72 @@ class KanjiDB:
             )
 
     def mass_set_characters_known(self, card_type, characters):
-        self.crs_executemany_and_commit(
-            f"INSERT OR IGNORE INTO usr.{card_type.label}_card_ids (character,card_id) VALUES (?,?)",
-            [(c, -1) for c in characters],
-        )
+        for c in characters:
+            self.set_character_known(card_type, c, True)
+
+    def delete_unstudied_cards_for_characters(self, card_type, characters):
+        """
+        Delete kanji cards for the given characters that have never been studied.
+        A card is considered unstudied if all of its cards have zero repetitions.
+        Cards with any review history are kept.
+
+        This operates only on the provided card_type (e.g. Recognition OR Production),
+        and leaves other Migaku Kanji learning types untouched.
+        """
+        unique_chars = set(characters)
+        col = aqt.mw.col
+
+        for character in unique_chars:
+            # Find notes of this card type whose Character field matches.
+            try:
+                note_ids = col.find_notes(
+                    f'"note:{card_type.model_name}" "Character:{character}"'
+                )
+            except Exception:
+                continue
+
+            if not note_ids:
+                continue
+
+            to_delete = []
+
+            for nid in note_ids:
+                try:
+                    note = col.getNote(nid)
+                except Exception:
+                    continue
+                if not note:
+                    continue
+
+                for card in note.cards():
+                    # Only delete cards that have never been reviewed.
+                    if getattr(card, "reps", 0) == 0:
+                        to_delete.append(card.id)
+
+            if not to_delete:
+                continue
+
+            removed_any = False
+            try:
+                # Newer Anki versions
+                col.remove_cards(to_delete)
+                removed_any = True
+            except Exception:
+                try:
+                    # Older Anki versions
+                    col.remCards(to_delete)
+                    removed_any = True
+                except Exception:
+                    removed_any = False
+
+            if removed_any:
+                # Ensure this learning type is marked as manually known so stats
+                # won't show it as unknown (no card) after deletion.
+                table = f"usr.{card_type.label}_card_ids"
+                self.crs_execute_and_commit(
+                    f"INSERT OR REPLACE INTO {table} (character, card_id) VALUES (?, ?)",
+                    (character, -1),
+                )
 
     def refresh_notes_for_character(self, character):
         ct_find_filter = [f'"note:{ct.model_name}"' for ct in CardType]
