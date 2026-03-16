@@ -562,7 +562,7 @@ class KanjiDB:
 
     def mass_set_characters_known(self, card_type, characters):
         self.crs_executemany_and_commit(
-            f"INSERT OR IGNORE INTO usr.{card_type.label}_card_ids (character,card_id) VALUES (?,?)",
+            f"INSERT OR REPLACE INTO usr.{card_type.label}_card_ids (character,card_id) VALUES (?,?)",
             [(c, -1) for c in characters],
         )
 
